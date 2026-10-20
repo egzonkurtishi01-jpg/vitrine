@@ -1,0 +1,118 @@
+name: Build reviewed Vitrine source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    env:
+      THEOS: ${{ github.workspace }}/theos
+      SOURCE_COMMIT: 7c3067f65b8b11f56fcf4a0e12f3a70b8f0a9947
+      THEOS_COMMIT: 304e0799973e8145f32e4ca2de6c747a84b758ce
+      FLAG_REFERENCE_SHA256: 937ae1f258f8586e49c1e85399c327b910e4bbb6964a91f6433ac1bb863262e5
+    steps:
+      - name: Check out the reviewed upstream source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: Clone5030/vitrine
+          ref: 7c3067f65b8b11f56fcf4a0e12f3a70b8f0a9947
+          persist-credentials: false
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90
+        with:
+          xcode-version: latest-stable
+
+      - name: Check out the pinned Theos toolchain
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: theos/theos
+          ref: 304e0799973e8145f32e4ca2de6c747a84b758ce
+          path: theos
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install standard build tools
+        run: brew install make dpkg ldid
+
+      # This IPA is read ONLY to recover configuration flag names and defaults.
+      # No executable, library, framework, or resource from it is distributed.
+      - name: Read Spotify flag metadata from the hash-pinned reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          curl --fail --location --retry 3 \
+            'https://pub-dd800571175348b6a2745b3396360028.r2.dev/Spotify-9.1.90-Vitrine.ipa' \
+            --output "$RUNNER_TEMP/flag-reference.ipa"
+          printf '%s  %s\n' "$FLAG_REFERENCE_SHA256" "$RUNNER_TEMP/flag-reference.ipa" | shasum -a 256 --check
+          python3 scripts/extract-flags.py "$RUNNER_TEMP/flag-reference.ipa"
+
+      - name: Compile Vitrine from source without the debug driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          env -u MAKELEVEL gmake -C tweak clean package SG_DRIVER=0
+          mkdir -p out/source-components
+          cp tweak/packages/*.deb out/source-components/
+          PACKAGE="$(find tweak/packages -name '*.deb' -type f | head -1)"
+          dpkg-deb --extract "$PACKAGE" "$RUNNER_TEMP/vitrine-package"
+          DYLIB="$(find "$RUNNER_TEMP/vitrine-package" -name spotifyglass.dylib -type f | head -1)"
+          test -n "$DYLIB"
+          cp "$DYLIB" out/source-components/
+
+      - name: Compile the App Group library and Live Activity from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun --sdk iphoneos clang -target arm64-apple-ios16.0 -dynamiclib -fobjc-arc -Os \
+            -framework Foundation -framework Security \
+            -install_name @rpath/SpotifyGlassAppGroups.dylib \
+            -o out/source-components/SpotifyGlassAppGroups.dylib extension/AppGroups/AppGroups.m
+          python3 - <<'PY'
+          import plistlib
+          with open('out/host-metadata.plist', 'wb') as output:
+              plistlib.dump({'CFBundleIdentifier': 'com.spotify.client',
+                            'CFBundleShortVersionString': '9.1.90',
+                            'CFBundleVersion': '919002269'}, output)
+          PY
+          scripts/build-extension.sh out/host-metadata.plist out/source-components/extension
+
+      - name: Record source identity, tools, and output hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version > out/source-components/toolchain.txt
+          xcrun --sdk iphoneos clang --version >> out/source-components/toolchain.txt
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path('out/source-components')
+          files = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                   for path in sorted(root.rglob('*')) if path.is_file()}
+          manifest = {
+              'purpose': 'Vitrine components compiled from reviewed source; not an installable Spotify IPA',
+              'source_repository': 'https://github.com/Clone5030/vitrine',
+              'source_commit': os.environ['SOURCE_COMMIT'],
+              'theos_commit': os.environ['THEOS_COMMIT'],
+              'configuration_metadata_reference_sha256': os.environ['FLAG_REFERENCE_SHA256'],
+              'reference_executables_included': False,
+              'debug_driver_enabled': False,
+              'feature_flag_table_sha256': hashlib.sha256(pathlib.Path('tweak/Sources/Shared/Flags/SGFlagList.m').read_bytes()).hexdigest(),
+              'run_url': f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              'sha256': files,
+          }
+          (root / 'build-provenance.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+
+      - name: Save only the newly built Vitrine components
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: vitrine-from-reviewed-source
+          path: out/source-components/
+          if-no-files-found: error
+          retention-days: 14
