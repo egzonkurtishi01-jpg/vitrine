@@ -1,3 +1,5 @@
+> **Personal AltStore source:** This fork publishes Spotify + Vitrine builds for Egzon. Add `https://raw.githubusercontent.com/egzonkurtishi01-jpg/vitrine/main/altstore-source.json` in AltStore Classic. See [ALTSTORE.md](ALTSTORE.md) for installation and updates. The guide below is the upstream project documentation; build provenance identifies the upstream commit used for each personal release.
+
 <h1 align="center">Vitrine</h1>
 
 <p align="center">Spotify, in glass.</p>
