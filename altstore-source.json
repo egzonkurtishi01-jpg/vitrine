@@ -68,6 +68,32 @@
           "NSUserTrackingUsageDescription": "Your data will be used to deliver personalized ads or content to you."
         }
       }
+    },
+    {
+      "name": "Stremio Downloads (Test)",
+      "bundleIdentifier": "com.stremio.pal",
+      "developerName": "Stremio / personal download patch",
+      "localizedDescription": "Experimental Stremio 2.1.0 build for iPhone and iPad. Changes three local checks to expose Downloads and allow the native download action. Not tested on a device. Start with a direct HTTP video; torrent/core restrictions may remain. Keeps the download Live Activity extension. Does not change your Stremio subscription or unlock other Supporter features. Independently modified; not an official Stremio release. Requires signing with AltStore Classic or SideStore.",
+      "iconURL": "https://i.imgur.com/ykZuH0r.png",
+      "tintColor": "#7055D9",
+      "category": "entertainment",
+      "versions": [
+        {
+          "version": "2.1.0",
+          "buildVersion": "24",
+          "marketingVersion": "2.1.0 / Downloads test 1",
+          "date": "2026-10-23T21:55:47.093831+00:00",
+          "localizedDescription": "Experimental local download-check patch. Package verified; device launch and downloads are untested. Preserve the Downloads Live Activity extension when signing. Official Stremio updates replace this modification.",
+          "downloadURL": "https://github.com/egzonkurtishi01-jpg/vitrine/releases/download/stremio-downloads-2.1.0-test.1/Stremio-2.1.0-Downloads-Test.ipa",
+          "size": 84700924,
+          "sha256": "368a8cac891f49059226f7196cd2f3ab7c133f19044b5e681aef6807d55d0aec",
+          "minOSVersion": "15.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {}
+      }
     }
   ],
   "news": []
