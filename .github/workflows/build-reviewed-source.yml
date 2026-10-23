@@ -18,7 +18,7 @@ jobs:
       THEOS: ${{ github.workspace }}/theos
       SOURCE_COMMIT: ebc1cbf6ee23a8ad839e60f04f3abf862f2ea85e
       THEOS_COMMIT: 304e0799973e8145f32e4ca2de6c747a84b758ce
-      FLAG_REFERENCE_SHA256: 937ae1f258f8586e49c1e85399c327b910e4bbb6964a91f6433ac1bb863262e5
+      FLAG_REFERENCE_SHA256: 599132ad75b628fe07fa3f455ae7dcaeea2454a6f6cb7c87c75c8546571bdc83
     steps:
       - name: Check out the reviewed upstream source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
