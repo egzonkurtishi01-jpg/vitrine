@@ -1,7 +1,8 @@
 """Package source-built Vitrine components and generate matching AltStore metadata.
 
-The Spotify base is the same hash-pinned community package used for the previous
-working installation. This does not authenticate its proprietary executable.
+The community base retains the previous working Spotify executable code and
+resources; its Vitrine loading entries were regenerated. This does not
+authenticate its proprietary executable.
 """
 import argparse
 import hashlib
@@ -15,7 +16,7 @@ import zipfile
 from datetime import datetime, timezone
 
 ROOT = "Payload/Spotify.app/"
-BASE_SHA = "937ae1f258f8586e49c1e85399c327b910e4bbb6964a91f6433ac1bb863262e5"
+BASE_SHA = "599132ad75b628fe07fa3f455ae7dcaeea2454a6f6cb7c87c75c8546571bdc83"
 
 
 def digest(data):
@@ -70,7 +71,10 @@ def package(base_path, components, output_dir, repository, mod_version, build_nu
         app = plistlib.loads(base.read(ROOT + "Info.plist"))
         assert app["CFBundleIdentifier"] == "com.spotify.client"
         assert app["CFBundleShortVersionString"] == "9.1.90"
-        original_executable = digest(base.read(ROOT + app["CFBundleExecutable"]))
+        main_bytes = base.read(ROOT + app["CFBundleExecutable"])
+        original_executable = digest(main_bytes)
+        assert original_executable == "715c8a20c424f4b79d3fe3fee7bd46f17379f410c85f98ed7d36d0544b6cfc37"
+        assert digest(main_bytes[16488:231019600]) == "38931609ab40fa3bfe07c22f2513babd620c78492085e990d6b85bd8b5df37a7"
         app["CFBundleVersion"] = build_number
         app["VitrineVersion"] = mod_version
         replacements[ROOT + "Info.plist"] = plistlib.dumps(app, fmt=plistlib.FMT_BINARY)
@@ -166,7 +170,9 @@ def package(base_path, components, output_dir, repository, mod_version, build_nu
         }], "news": [],
     }
     (output_dir / "altstore-source.json").write_text(json.dumps(source, indent=2) + "\n")
-    report = {**provenance, "spotify_base_sha256": BASE_SHA,
+    report = {"component_build": provenance, "spotify_base_sha256": BASE_SHA,
+              "source_commit": provenance["source_commit"],
+              "run_url": provenance["run_url"],
               "spotify_executable_sha256": original_executable,
               "spotify_executable_verified_as_official": False,
               "ipa_sha256": digest(ipa.read_bytes()), "ipa_size": ipa.stat().st_size,
