@@ -6,21 +6,25 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: spotify-altstore-publication
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: macos-26-intel
     timeout-minutes: 35
     env:
       THEOS: ${{ github.workspace }}/theos
-      SOURCE_COMMIT: 7c3067f65b8b11f56fcf4a0e12f3a70b8f0a9947
+      SOURCE_COMMIT: ebc1cbf6ee23a8ad839e60f04f3abf862f2ea85e
       THEOS_COMMIT: 304e0799973e8145f32e4ca2de6c747a84b758ce
       FLAG_REFERENCE_SHA256: 937ae1f258f8586e49c1e85399c327b910e4bbb6964a91f6433ac1bb863262e5
     steps:
       - name: Check out the reviewed upstream source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          repository: Clone5030/vitrine
-          ref: 7c3067f65b8b11f56fcf4a0e12f3a70b8f0a9947
+          repository: My-Name-Is-Jeff/vitrine
+          ref: ebc1cbf6ee23a8ad839e60f04f3abf862f2ea85e
           persist-credentials: false
 
       - name: Select Xcode
@@ -79,7 +83,7 @@ jobs:
           with open('out/host-metadata.plist', 'wb') as output:
               plistlib.dump({'CFBundleIdentifier': 'com.spotify.client',
                             'CFBundleShortVersionString': '9.1.90',
-                            'CFBundleVersion': '919002269'}, output)
+                            'CFBundleVersion': '919002270'}, output)
           PY
           scripts/build-extension.sh out/host-metadata.plist out/source-components/extension
 
@@ -96,7 +100,7 @@ jobs:
                    for path in sorted(root.rglob('*')) if path.is_file()}
           manifest = {
               'purpose': 'Vitrine components compiled from reviewed source; not an installable Spotify IPA',
-              'source_repository': 'https://github.com/Clone5030/vitrine',
+              'source_repository': 'https://github.com/My-Name-Is-Jeff/vitrine',
               'source_commit': os.environ['SOURCE_COMMIT'],
               'theos_commit': os.environ['THEOS_COMMIT'],
               'configuration_metadata_reference_sha256': os.environ['FLAG_REFERENCE_SHA256'],
@@ -116,3 +120,72 @@ jobs:
           path: out/source-components/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Check out the personal distribution tools
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: distribution
+          persist-credentials: false
+
+      - name: Package the Spotify update and matching AltStore source
+        run: python3 distribution/scripts/altstore-package.py "$RUNNER_TEMP/flag-reference.ipa" out/source-components out/altstore-release
+
+      - name: Save the installable update and source
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        with:
+          name: altstore-release
+          path: out/altstore-release/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: altstore-release
+          path: release
+      - name: Publish an immutable IPA download
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=spotify-vitrine-1.0.0-beta.14
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to replace published binaries."
+            exit 1
+          fi
+          gh release create "$TAG" release/*.ipa release/build-details.json --target "${{ github.sha }}" --title 'Spotify 9.1.90 + Vitrine beta 14' --notes 'Personal AltStore build. Vitrine beta 14 compiled from pinned upstream source, combined with the same Spotify 9.1.90 base as the previous working installation. Includes the sideload Substrate path fix and Live Activity extension. Unsigned: install using AltStore Classic with your existing Apple account. Device launch and CarPlay still need testing.'
+      - name: Publish the AltStore source after its IPA is available
+        shell: python
+        run: |
+          import base64, json, os, pathlib, subprocess
+          repo = os.environ['GH_REPO']
+          endpoint = f'repos/{repo}/contents/altstore-source.json'
+          response = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
+          source = json.loads(pathlib.Path('release/altstore-source.json').read_text())
+          request = {'message': 'chore: publish Spotify Vitrine beta 14 AltStore source [skip ci]', 'branch': 'main'}
+          if response.returncode == 0:
+              current = json.loads(response.stdout)
+              request['sha'] = current['sha']
+              previous = json.loads(base64.b64decode(current['content']))
+              app = source['apps'][0]
+              for old in previous.get('apps', []):
+                  if old['bundleIdentifier'] == app['bundleIdentifier']:
+                      app['versions'] += [v for v in old.get('versions', []) if (v['version'], v.get('buildVersion')) != (app['versions'][0]['version'], app['versions'][0]['buildVersion'])]
+                  else:
+                      source['apps'].append(old)
+          elif '404' not in response.stderr:
+              raise RuntimeError(response.stderr)
+          data = json.dumps(source, indent=2) + '\n'
+          request['content'] = base64.b64encode(data.encode()).decode()
+          pathlib.Path('source-request.json').write_text(json.dumps(request))
+          subprocess.run(['gh', 'api', '--method', 'PUT', endpoint, '--input', 'source-request.json'], check=True, stdout=subprocess.DEVNULL)
+          pathlib.Path(os.environ['GITHUB_STEP_SUMMARY']).write_text(f"AltStore source: https://raw.githubusercontent.com/{repo}/main/altstore-source.json\n")
