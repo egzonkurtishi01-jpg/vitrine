@@ -1,0 +1,123 @@
+name: Publish verified Spotify update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: spotify-altstore-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-26-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Install package inspection tool
+        run: brew install ldid
+
+      - name: Recover the successfully compiled components
+        uses: actions/download-artifact@v5
+        with:
+          name: vitrine-from-reviewed-source
+          path: out/source-components
+          run-id: 42293574441
+          github-token: ${{ github.token }}
+
+      - name: Verify recovered source and component hashes
+        shell: python
+        run: |
+          import hashlib, json, pathlib
+          root = pathlib.Path('out/source-components')
+          report = json.loads((root / 'build-provenance.json').read_text())
+          assert report['source_commit'] == 'e033415411e9ae0c7c5033377f4b62d8d837a9ac'
+          assert report['debug_driver_enabled'] is False
+          assert report['configuration_metadata_reference_sha256'] == '60c97dd1915cb09985930a49a4339cba5540a6081ce5f571efa67b126b99d709'
+          for name, expected in report['sha256'].items():
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected, name
+          print('Verified pinned source, build mode, and all component hashes.')
+
+      - name: Download our verified previous Spotify release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --connect-timeout 30 --max-time 180 --retry 3 \
+            'https://github.com/egzonkurtishi01-jpg/vitrine/releases/download/spotify-vitrine-1.0.0-beta.14/Spotify-Vitrine-1.0.0-beta.14.ipa' \
+            --output "$RUNNER_TEMP/spotify-base.ipa"
+          printf '%s  %s\n' '60c97dd1915cb09985930a49a4339cba5540a6081ce5f571efa67b126b99d709' "$RUNNER_TEMP/spotify-base.ipa" | shasum -a 256 --check
+
+      - name: Package and verify the update
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/altstore-package.py "$RUNNER_TEMP/spotify-base.ipa" out/source-components out/altstore-release --version 1.0.0-beta.16 --build-number 919003060
+          python3 - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path('out/altstore-release/build-details.json')
+          report = json.loads(path.read_text())
+          report['publication_run_url'] = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          report['component_recovery_reason'] = 'The original build compiled and packaged successfully, but its final Actions artifact upload timed out. Reused its hash-verified compiled components.'
+          path.write_text(json.dumps(report, indent=2) + '\n')
+          PY
+
+      - name: Publish immutable IPA directly to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=spotify-vitrine-1.0.0-beta.16
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh api "repos/$GH_REPO/releases/tags/$TAG" > existing-release.json
+            python3 - <<'PY'
+          import hashlib, json, pathlib
+          file = pathlib.Path('out/altstore-release/Spotify-Vitrine-1.0.0-beta.16.ipa')
+          release = json.loads(pathlib.Path('existing-release.json').read_text())
+          asset = next(x for x in release['assets'] if x['name'] == file.name)
+          assert asset['state'] == 'uploaded'
+          assert asset['size'] == file.stat().st_size
+          assert asset['digest'] == 'sha256:' + hashlib.sha256(file.read_bytes()).hexdigest()
+          print('Existing release matches; no published binary was replaced.')
+          PY
+          else
+            cat > "$RUNNER_TEMP/release-notes.txt" <<'NOTES'
+          Personal AltStore update. Vitrine beta 16 plus the November 6 crash, lyrics and player fixes, compiled from pinned upstream commit e033415411e9ae0c7c5033377f4b62d8d837a9ac.
+
+          Keeps the same Spotify 9.1.90 base and com.spotify.client identifier as the previous installation, with build 919003060. Includes the Live Activity extension and the same extension identifiers.
+
+          Unsigned: install over the existing app using the same Apple account. Device launch and CarPlay still need testing.
+          NOTES
+            gh release create "$TAG" out/altstore-release/*.ipa out/altstore-release/build-details.json --target "${{ github.sha }}" --title 'Spotify 9.1.90 + Vitrine beta 16 (November 6 fixes)' --notes-file "$RUNNER_TEMP/release-notes.txt"
+          fi
+
+      - name: Update the source while preserving other apps and old versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: python
+        run: |
+          import base64, json, os, pathlib, subprocess
+          repo = os.environ['GH_REPO']
+          endpoint = f'repos/{repo}/contents/altstore-source.json'
+          current = json.loads(subprocess.check_output(['gh', 'api', endpoint], text=True))
+          previous = json.loads(base64.b64decode(current['content']))
+          source = json.loads(pathlib.Path('out/altstore-release/altstore-source.json').read_text())
+          app = source['apps'][0]
+          for old in previous.get('apps', []):
+              if old['bundleIdentifier'] == app['bundleIdentifier']:
+                  app['versions'] += [v for v in old.get('versions', []) if (v['version'], v.get('buildVersion')) != (app['versions'][0]['version'], app['versions'][0]['buildVersion'])]
+              else:
+                  source['apps'].append(old)
+          data = json.dumps(source, indent=2) + '\n'
+          request = {'message': 'chore: publish Spotify Vitrine beta 16 AltStore source [skip ci]', 'branch': 'main', 'sha': current['sha'], 'content': base64.b64encode(data.encode()).decode()}
+          pathlib.Path('source-request.json').write_text(json.dumps(request))
+          subprocess.run(['gh', 'api', '--method', 'PUT', endpoint, '--input', 'source-request.json'], check=True, stdout=subprocess.DEVNULL)
+          pathlib.Path(os.environ['GITHUB_STEP_SUMMARY']).write_text(f"Published Spotify 9.1.90 + Vitrine beta 16 with November 6 fixes.\n\nSource: https://raw.githubusercontent.com/{repo}/main/altstore-source.json\n")
