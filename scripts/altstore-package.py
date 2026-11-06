@@ -16,7 +16,7 @@ import zipfile
 from datetime import datetime, timezone
 
 ROOT = "Payload/Spotify.app/"
-BASE_SHA = "599132ad75b628fe07fa3f455ae7dcaeea2454a6f6cb7c87c75c8546571bdc83"
+BASE_SHA = "60c97dd1915cb09985930a49a4339cba5540a6081ce5f571efa67b126b99d709"
 
 
 def digest(data):
