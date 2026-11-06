@@ -45,8 +45,12 @@ def fix_substrate(data):
                 changed += 1
         offset += length
     assert offset == 32 + size
-    if changed != 1 and replacement not in patched:
-        raise ValueError("Expected the previously verified Substrate dependency")
+    # Current upstream uses Logos' internal runtime and does not link Substrate.
+    # Older builds still need the app-local path rewrite above.
+    if changed > 1:
+        raise ValueError("Unexpected duplicate Substrate dependency")
+    if original in patched:
+        raise ValueError("Unresolved jailbreak-only Substrate dependency")
     return bytes(patched)
 
 
@@ -152,9 +156,9 @@ def package(base_path, components, output_dir, repository, mod_version, build_nu
         "version": app["CFBundleShortVersionString"], "buildVersion": build_number,
         "marketingVersion": f"Spotify {app['CFBundleShortVersionString']} / Vitrine {mod_version}",
         "date": datetime.now(timezone.utc).isoformat(),
-        "localizedDescription": f"Vitrine {mod_version}, built from pinned source. Includes the Live Activity for lyrics and the sideload library-path fix. Sign with the same Apple account as your existing Spotify installation.",
+        "localizedDescription": f"Vitrine {mod_version} with the November 6 crash, lyrics and player fixes, built from pinned source. Includes the Live Activity for lyrics. Sign with the same Apple account as your existing Spotify installation; the app identifier is unchanged.",
         "downloadURL": f"https://github.com/{repository}/releases/download/{tag}/{filename}",
-        "size": ipa.stat().st_size, "minOSVersion": app["MinimumOSVersion"],
+        "size": ipa.stat().st_size, "sha256": digest(ipa.read_bytes()), "minOSVersion": app["MinimumOSVersion"],
     }
     source = {
         "name": "Egzon's Apps", "identifier": "com.egzon.altstore.source",
@@ -177,7 +181,7 @@ def package(base_path, components, output_dir, repository, mod_version, build_nu
               "spotify_executable_verified_as_official": False,
               "ipa_sha256": digest(ipa.read_bytes()), "ipa_size": ipa.stat().st_size,
               "vitrine_version": mod_version, "build_number": build_number,
-              "substrate_dependency": "@loader_path/CydiaSubstrate.framework/CydiaSubstrate",
+              "substrate_dependency": "@loader_path/CydiaSubstrate.framework/CydiaSubstrate" if b"@loader_path/CydiaSubstrate.framework/CydiaSubstrate" in replacements[ROOT + "Frameworks/spotifyglass.dylib"] else "not required; upstream uses the internal Logos runtime",
               "signing": "Unsigned; requires AltStore signing", "release_tag": tag}
     (output_dir / "build-details.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps({"ipa": str(ipa), "sha256": report["ipa_sha256"], "build_number": build_number}))
@@ -189,7 +193,7 @@ if __name__ == "__main__":
     parser.add_argument("components", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", "egzonkurtishi01-jpg/vitrine"))
-    parser.add_argument("--version", default="1.0.0-beta.14")
-    parser.add_argument("--build-number", default="919002270")
+    parser.add_argument("--version", default="1.0.0-beta.16")
+    parser.add_argument("--build-number", default="919003060")
     args = parser.parse_args()
     package(args.base, args.components, args.output, args.repository, args.version, args.build_number)
