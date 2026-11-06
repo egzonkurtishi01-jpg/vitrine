@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 35
     env:
       THEOS: ${{ github.workspace }}/theos
-      SOURCE_COMMIT: ebc1cbf6ee23a8ad839e60f04f3abf862f2ea85e
+      SOURCE_COMMIT: e033415411e9ae0c7c5033377f4b62d8d837a9ac
       THEOS_COMMIT: 304e0799973e8145f32e4ca2de6c747a84b758ce
       FLAG_REFERENCE_SHA256: 599132ad75b628fe07fa3f455ae7dcaeea2454a6f6cb7c87c75c8546571bdc83
     steps:
@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: My-Name-Is-Jeff/vitrine
-          ref: ebc1cbf6ee23a8ad839e60f04f3abf862f2ea85e
+          ref: e033415411e9ae0c7c5033377f4b62d8d837a9ac
           persist-credentials: false
 
       - name: Select Xcode
@@ -83,7 +83,7 @@ jobs:
           with open('out/host-metadata.plist', 'wb') as output:
               plistlib.dump({'CFBundleIdentifier': 'com.spotify.client',
                             'CFBundleShortVersionString': '9.1.90',
-                            'CFBundleVersion': '919002270'}, output)
+                            'CFBundleVersion': '919003060'}, output)
           PY
           scripts/build-extension.sh out/host-metadata.plist out/source-components/extension
 
@@ -130,7 +130,7 @@ jobs:
           persist-credentials: false
 
       - name: Package the Spotify update and matching AltStore source
-        run: python3 distribution/scripts/altstore-package.py "$RUNNER_TEMP/flag-reference.ipa" out/source-components out/altstore-release
+        run: python3 distribution/scripts/altstore-package.py "$RUNNER_TEMP/flag-reference.ipa" out/source-components out/altstore-release --version 1.0.0-beta.16 --build-number 919003060
 
       - name: Save the installable update and source
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
@@ -157,12 +157,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG=spotify-vitrine-1.0.0-beta.14
+          TAG=spotify-vitrine-1.0.0-beta.16
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "::error::Release already exists; refusing to replace published binaries."
             exit 1
           fi
-          gh release create "$TAG" release/*.ipa release/build-details.json --target "${{ github.sha }}" --title 'Spotify 9.1.90 + Vitrine beta 14' --notes 'Personal AltStore build. Vitrine beta 14 compiled from pinned upstream source, combined with the same Spotify 9.1.90 base as the previous working installation. Includes the sideload Substrate path fix and Live Activity extension. Unsigned: install using AltStore Classic with your existing Apple account. Device launch and CarPlay still need testing.'
+          gh release create "$TAG" release/*.ipa release/build-details.json --target "${{ github.sha }}" --title 'Spotify 9.1.90 + Vitrine beta 16 (November 6 fixes)' --notes 'Personal AltStore update. Vitrine beta 16 plus the November 6 crash, lyrics and player fixes, compiled from pinned upstream commit e033415411e9ae0c7c5033377f4b62d8d837a9ac. Keeps the same Spotify 9.1.90 base and com.spotify.client identifier as the previous installation, with a higher build number. Includes the Live Activity extension. Unsigned: install over the existing app using the same Apple account. Device launch and CarPlay still need testing.'
       - name: Publish the AltStore source after its IPA is available
         shell: python
         run: |
@@ -171,7 +171,7 @@ jobs:
           endpoint = f'repos/{repo}/contents/altstore-source.json'
           response = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
           source = json.loads(pathlib.Path('release/altstore-source.json').read_text())
-          request = {'message': 'chore: publish Spotify Vitrine beta 14 AltStore source [skip ci]', 'branch': 'main'}
+          request = {'message': 'chore: publish Spotify Vitrine beta 16 AltStore source [skip ci]', 'branch': 'main'}
           if response.returncode == 0:
               current = json.loads(response.stdout)
               request['sha'] = current['sha']
