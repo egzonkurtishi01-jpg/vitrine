@@ -18,7 +18,7 @@ jobs:
       THEOS: ${{ github.workspace }}/theos
       SOURCE_COMMIT: e033415411e9ae0c7c5033377f4b62d8d837a9ac
       THEOS_COMMIT: 304e0799973e8145f32e4ca2de6c747a84b758ce
-      FLAG_REFERENCE_SHA256: 599132ad75b628fe07fa3f455ae7dcaeea2454a6f6cb7c87c75c8546571bdc83
+      FLAG_REFERENCE_SHA256: 60c97dd1915cb09985930a49a4339cba5540a6081ce5f571efa67b126b99d709
     steps:
       - name: Check out the reviewed upstream source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
           curl --fail --location --retry 3 \
-            'https://pub-dd800571175348b6a2745b3396360028.r2.dev/Spotify-9.1.90-Vitrine.ipa' \
+            'https://github.com/egzonkurtishi01-jpg/vitrine/releases/download/spotify-vitrine-1.0.0-beta.14/Spotify-Vitrine-1.0.0-beta.14.ipa' \
             --output "$RUNNER_TEMP/flag-reference.ipa"
           printf '%s  %s\n' "$FLAG_REFERENCE_SHA256" "$RUNNER_TEMP/flag-reference.ipa" | shasum -a 256 --check
           python3 scripts/extract-flags.py "$RUNNER_TEMP/flag-reference.ipa"
