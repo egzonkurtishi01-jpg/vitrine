@@ -17,6 +17,17 @@
       "versions": [
         {
           "version": "9.1.90",
+          "buildVersion": "919003060",
+          "marketingVersion": "Spotify 9.1.90 / Vitrine 1.0.0-beta.16",
+          "date": "2026-11-06T21:14:51.488607+00:00",
+          "localizedDescription": "Vitrine 1.0.0-beta.16 with the November 6 crash, lyrics and player fixes, built from pinned source. Includes the Live Activity for lyrics. Sign with the same Apple account as your existing Spotify installation; the app identifier is unchanged.",
+          "downloadURL": "https://github.com/egzonkurtishi01-jpg/vitrine/releases/download/spotify-vitrine-1.0.0-beta.16/Spotify-Vitrine-1.0.0-beta.16.ipa",
+          "size": 130721491,
+          "sha256": "6f3a5f93db8987ed2e3e553f7a242958c1ca826b69fe5cb92ef4469ad71d0f97",
+          "minOSVersion": "16.1"
+        },
+        {
+          "version": "9.1.90",
           "buildVersion": "919002270",
           "marketingVersion": "Spotify 9.1.90 / Vitrine 1.0.0-beta.14",
           "date": "2026-10-23T20:38:15.021440+00:00",
